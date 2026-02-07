@@ -1,53 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Direction, GameState, Point } from './game/types';
-import { initGame, setDirection, step } from './game/logic';
-
-const GRID_SIZE = 20;
-const TICK_MS = 120;
-const CELL_SIZE = 20;
-
-const KEY_TO_DIR: Record<string, Direction> = {
-  ArrowUp: 'up',
-  ArrowDown: 'down',
-  ArrowLeft: 'left',
-  ArrowRight: 'right',
-  w: 'up',
-  s: 'down',
-  a: 'left',
-  d: 'right',
-  W: 'up',
-  S: 'down',
-  A: 'left',
-  D: 'right'
-};
+import { CONFIG } from './game/config';
+import type { Direction, Point } from './game/types';
+import { applyAction, initGame, step } from './game/logic';
+import { keyToAction } from './game/input';
 
 const COLORS = {
   background: '#f6f4ef',
   snake: '#2c2c2c',
+  snakeBody: '#3a3a3a',
   food: '#d65235',
+  wall: '#5f6a6b',
+  wallWarn: '#b5533c',
   border: '#d8d3c7'
 };
 
 const drawCell = (ctx: CanvasRenderingContext2D, point: Point, color: string) => {
   ctx.fillStyle = color;
-  ctx.fillRect(point.x * CELL_SIZE, point.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+  ctx.fillRect(point.x * CONFIG.cellSize, point.y * CONFIG.cellSize, CONFIG.cellSize, CONFIG.cellSize);
 };
 
-const useStableRng = () => useMemo(() => Math.random, []);
+const useStableSeed = () => useMemo(() => Date.now(), []);
 
 export default function App() {
-  const rng = useStableRng();
-  const [state, setState] = useState<GameState>(() => initGame(GRID_SIZE, rng));
+  const seed = useStableSeed();
+  const [state, setState] = useState(() => initGame(CONFIG.gridSize, seed));
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
-      const nextDir = KEY_TO_DIR[event.key];
-      if (!nextDir) {
+      const action = keyToAction(event.key);
+      if (!action) {
         return;
       }
       event.preventDefault();
-      setState((prev) => setDirection(prev, nextDir));
+      setState((prev) => applyAction(prev, action));
     };
 
     window.addEventListener('keydown', handleKey);
@@ -58,13 +44,12 @@ export default function App() {
     if (state.isGameOver) {
       return;
     }
-
     const id = window.setInterval(() => {
-      setState((prev) => step(prev, GRID_SIZE, rng));
-    }, TICK_MS);
+      setState((prev) => step(prev, CONFIG.gridSize));
+    }, state.tickMs);
 
     return () => window.clearInterval(id);
-  }, [state.isGameOver, rng]);
+  }, [state.isGameOver, state.tickMs]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -72,8 +57,8 @@ export default function App() {
       return;
     }
 
-    canvas.width = GRID_SIZE * CELL_SIZE;
-    canvas.height = GRID_SIZE * CELL_SIZE;
+    canvas.width = CONFIG.gridSize * CONFIG.cellSize;
+    canvas.height = CONFIG.gridSize * CONFIG.cellSize;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       return;
@@ -82,11 +67,20 @@ export default function App() {
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    const blink = state.shiftWarningMs > 0 && Math.floor(state.shiftWarningMs / 150) % 2 === 0;
+    for (let x = 0; x < CONFIG.gridSize; x += 1) {
+      for (let y = 0; y < CONFIG.gridSize; y += 1) {
+        if (state.walls[x]?.[y]) {
+          drawCell(ctx, { x, y }, blink ? COLORS.wallWarn : COLORS.wall);
+        }
+      }
+    }
+
     state.snake.forEach((segment, index) => {
-      drawCell(ctx, segment, index === 0 ? COLORS.snake : '#3a3a3a');
+      drawCell(ctx, segment, index === 0 ? COLORS.snake : COLORS.snakeBody);
     });
 
-    drawCell(ctx, state.food, COLORS.food);
+    drawCell(ctx, state.apple, COLORS.food);
 
     ctx.strokeStyle = COLORS.border;
     ctx.lineWidth = 2;
@@ -94,24 +88,29 @@ export default function App() {
   }, [state]);
 
   const handleRestart = () => {
-    setState(initGame(GRID_SIZE, rng));
+    setState(initGame(CONFIG.gridSize));
   };
 
   const handleDirection = (direction: Direction) => {
-    setState((prev) => setDirection(prev, direction));
+    setState((prev) => applyAction(prev, { type: 'TURN', direction }));
   };
 
   return (
     <div className="app">
       <header className="header">
         <div>
-          <h1>Snake</h1>
-          <p className="subtitle">Score: {state.score}</p>
+          <h1>Snake+</h1>
+          <p className="subtitle">Score: {state.score.toFixed(0)}</p>
         </div>
-        <div className="status">
-          {state.isGameOver ? 'Game Over' : 'Running'}
-        </div>
+        <div className="status">{state.isGameOver ? 'Game Over' : 'Running'}</div>
       </header>
+
+      <div className="hud">
+        <div>Flow: x{state.flowMultiplier.toFixed(1)}</div>
+        <div>Flow Window: {(state.flowTimerMs / 1000).toFixed(1)}s</div>
+        <div>Phase: {state.phaseCharges}</div>
+        <div>Shift in: {Math.ceil(state.shiftTimerMs / 1000)}s</div>
+      </div>
 
       <div className="game">
         <canvas ref={canvasRef} className="board" aria-label="Snake board" />
@@ -137,7 +136,7 @@ export default function App() {
       </div>
 
       <footer className="help">
-        <span>Controls: Arrow keys or WASD</span>
+        <span>Flow bonus chains apples within 5 seconds. Phase lets you slip through one wall.</span>
       </footer>
     </div>
   );
