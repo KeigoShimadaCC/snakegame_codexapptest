@@ -21,25 +21,29 @@ const FOOD_ORDER: FoodType[] = [
   'YELLOW_BANANA',
   'PINK_STRAWBERRY',
   'GREEN_CLOVER',
-  'GOLD_ACORN'
+  'GOLD_ACORN',
+  'GLOW_SEED'
 ];
 
 const randomFoodType = (rng: () => number): FoodType => {
   const roll = rng();
-  if (roll < 0.55) {
+  if (roll < 0.5) {
     return 'RED_APPLE';
   }
-  if (roll < 0.72) {
+  if (roll < 0.66) {
     return 'YELLOW_BANANA';
   }
-  if (roll < 0.86) {
+  if (roll < 0.8) {
     return 'PINK_STRAWBERRY';
   }
-  if (roll < 0.94) {
+  if (roll < 0.9) {
     return 'GREEN_CLOVER';
   }
-  if (roll < 0.98) {
+  if (roll < 0.96) {
     return 'GOLD_ACORN';
+  }
+  if (roll < 0.99) {
+    return 'GLOW_SEED';
   }
   return 'BLUE_BIRD';
 };
@@ -177,7 +181,9 @@ export const initGame = (gridSize = CONFIG.gridSize, seed = Date.now()): GameSta
     phaseCharges: 0,
     phaseWindowMoves: 0,
     slowTimerMs: 0,
+    burstCharges: 0,
     lastEatenType: null,
+    lastBurstUsed: false,
     isGameOver: false
   };
 };
@@ -194,6 +200,25 @@ export const applyAction = (state: GameState, action: Action): GameState => {
   if (state.isGameOver) {
     return state;
   }
+  if (action.type === 'BURST') {
+    if (state.burstCharges <= 0) {
+      return state;
+    }
+    const head = state.snake[0];
+    const nextWalls = state.walls.map((col) => col.slice());
+    for (let x = Math.max(0, head.x - CONFIG.burstRadius); x <= Math.min(CONFIG.gridSize - 1, head.x + CONFIG.burstRadius); x += 1) {
+      for (let y = Math.max(0, head.y - CONFIG.burstRadius); y <= Math.min(CONFIG.gridSize - 1, head.y + CONFIG.burstRadius); y += 1) {
+        nextWalls[x][y] = false;
+      }
+    }
+    return {
+      ...state,
+      walls: nextWalls,
+      burstCharges: state.burstCharges - 1,
+      lastBurstUsed: true
+    };
+  }
+
   const lastDir = state.pendingDirections[state.pendingDirections.length - 1] ?? state.direction;
   if (OPPOSITES[lastDir] === action.direction) {
     return state;
@@ -321,6 +346,8 @@ const scoreForFood = (type: FoodType): number => {
       return CONFIG.score.clover;
     case 'GOLD_ACORN':
       return CONFIG.score.acorn;
+    case 'GLOW_SEED':
+      return CONFIG.score.glowSeed;
     default:
       return CONFIG.score.redApple;
   }
@@ -331,7 +358,12 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
     return state;
   }
 
-  let nextState = updateSpeed({ ...state, elapsedMs: state.elapsedMs + state.tickMs, lastEatenType: null });
+  let nextState = updateSpeed({
+    ...state,
+    elapsedMs: state.elapsedMs + state.tickMs,
+    lastEatenType: null,
+    lastBurstUsed: false
+  });
   nextState = updateFlow(nextState);
   nextState = updateShiftTimers(nextState);
 
@@ -436,6 +468,14 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
       nextState = {
         ...nextState,
         walls: removeWalls(nextState.walls, Math.random, CONFIG.items.acornClearWalls)
+      };
+    }
+
+    if (eaten.type === 'GLOW_SEED') {
+      const nextBurst = Math.min(CONFIG.burstChargesMax, nextState.burstCharges + 1);
+      nextState = {
+        ...nextState,
+        burstCharges: nextBurst
       };
     }
 

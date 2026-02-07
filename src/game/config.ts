@@ -12,6 +12,8 @@ export const CONFIG = {
   phaseChargesMax: 2,
   phaseWindowMoves: 2,
   foodsPerPhaseCharge: 3,
+  burstChargesMax: 2,
+  burstRadius: 2,
   score: {
     redApple: 10,
     blueBird: 18,
@@ -19,6 +21,7 @@ export const CONFIG = {
     strawberry: 24,
     clover: 6,
     acorn: 6,
+    glowSeed: 10,
     phaseChargeBonus: 25
   },
   items: {
@@ -33,7 +36,8 @@ export const CONFIG = {
     YELLOW_BANANA: 1,
     PINK_STRAWBERRY: 1,
     GREEN_CLOVER: 1,
-    GOLD_ACORN: 1
+    GOLD_ACORN: 1,
+    GLOW_SEED: 1
   },
   walls: {
     startDensity: 0.04,

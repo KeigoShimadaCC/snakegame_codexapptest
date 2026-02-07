@@ -3,8 +3,9 @@ import { CONFIG } from './game/config';
 import type { Direction, Point } from './game/types';
 import { applyAction, initGame, step } from './game/logic';
 import { keyToAction } from './game/input';
-import { drawSprite, SPRITES } from './game/sprites';
+import { drawSprite, SPRITES, type Sprite } from './game/sprites';
 import { playSound, setSoundEnabled } from './game/sound';
+import type { FoodType } from './game/state';
 
 const COLORS = {
   background: '#e6efe0',
@@ -22,23 +23,79 @@ const useStableSeed = () => useMemo(() => Date.now(), []);
 
 type Screen = 'INTRO' | 'PLAYING';
 
-const spriteForFood = (type: string) => {
-  switch (type) {
-    case 'RED_APPLE':
-      return SPRITES.redApple;
-    case 'BLUE_BIRD':
-      return SPRITES.blueBird;
-    case 'YELLOW_BANANA':
-      return SPRITES.yellowBanana;
-    case 'PINK_STRAWBERRY':
-      return SPRITES.strawberry;
-    case 'GREEN_CLOVER':
-      return SPRITES.clover;
-    case 'GOLD_ACORN':
-      return SPRITES.acorn;
-    default:
-      return SPRITES.redApple;
+type ItemInfo = {
+  type: FoodType;
+  sprite: Sprite;
+  name: string;
+  description: string;
+};
+
+const ITEM_LEGEND: ItemInfo[] = [
+  {
+    type: 'RED_APPLE',
+    sprite: SPRITES.redApple,
+    name: 'Red Apple',
+    description: 'Classic snack. Keeps Flow going.'
+  },
+  {
+    type: 'BLUE_BIRD',
+    sprite: SPRITES.blueBird,
+    name: 'Blue Bird',
+    description: 'Darts away. Worth extra points.'
+  },
+  {
+    type: 'YELLOW_BANANA',
+    sprite: SPRITES.yellowBanana,
+    name: 'Yellow Banana',
+    description: 'Slows the trail for a few seconds.'
+  },
+  {
+    type: 'PINK_STRAWBERRY',
+    sprite: SPRITES.strawberry,
+    name: 'Pink Strawberry',
+    description: 'Big score bonus.'
+  },
+  {
+    type: 'GREEN_CLOVER',
+    sprite: SPRITES.clover,
+    name: 'Green Clover',
+    description: 'Grants a Phase charge.'
+  },
+  {
+    type: 'GOLD_ACORN',
+    sprite: SPRITES.acorn,
+    name: 'Gold Acorn',
+    description: 'Clears a few vines.'
+  },
+  {
+    type: 'GLOW_SEED',
+    sprite: SPRITES.glowSeed,
+    name: 'Glow Seed',
+    description: 'Adds a Burst charge (Space/Z/X).'
   }
+];
+
+const spriteForFood = (type: FoodType) =>
+  ITEM_LEGEND.find((item) => item.type === type)?.sprite ?? SPRITES.redApple;
+
+const ItemIcon = ({ sprite }: { sprite: Sprite }) => {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) {
+      return;
+    }
+    const size = 24;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    ctx.clearRect(0, 0, size, size);
+    drawSprite(ctx, sprite, { x: 0, y: 0 }, size);
+  }, [sprite]);
+  return <canvas ref={ref} className="item-icon" aria-hidden="true" />;
 };
 
 export default function App() {
@@ -51,6 +108,7 @@ export default function App() {
   const prevShiftWarning = useRef(0);
   const prevLastEaten = useRef(state.lastEatenType);
   const prevPhaseCharges = useRef(state.phaseCharges);
+  const prevBurstUsed = useRef(state.lastBurstUsed);
 
   useEffect(() => {
     setSoundEnabled(soundOn);
@@ -122,6 +180,11 @@ export default function App() {
       playSound('phase');
     }
     prevPhaseCharges.current = state.phaseCharges;
+
+    if (state.lastBurstUsed && !prevBurstUsed.current) {
+      playSound('burst');
+    }
+    prevBurstUsed.current = state.lastBurstUsed;
   }, [screen, state]);
 
   useEffect(() => {
@@ -177,10 +240,6 @@ export default function App() {
     setScreen('PLAYING');
   };
 
-  const handleDirection = (direction: Direction) => {
-    setState((prev) => applyAction(prev, { type: 'TURN', direction }));
-  };
-
   if (screen === 'INTRO') {
     return (
       <div className="app intro">
@@ -202,7 +261,7 @@ export default function App() {
             </div>
             <div className="storybook-notes">
               <p>Red apples are steady. Blue birds dart away. Yellow bananas slow you down.</p>
-              <p>Strawberries are sweet bonuses, clovers spark Phase, and acorns clear vines.</p>
+              <p>Strawberries score big, clovers boost Phase, acorns clear vines, glow seeds add Burst.</p>
             </div>
           </div>
         </div>
@@ -212,6 +271,10 @@ export default function App() {
 
   return (
     <div className="app">
+      <button type="button" className="sound-toggle" onClick={() => setSoundOn((prev) => !prev)}>
+        Sound: {soundOn ? 'On' : 'Off'}
+      </button>
+
       <header className="header">
         <div>
           <p className="eyebrow">Willowglade Woods</p>
@@ -236,37 +299,37 @@ export default function App() {
         <div>Flow: x{state.flowMultiplier.toFixed(1)}</div>
         <div>Flow Window: {(state.flowTimerMs / 1000).toFixed(1)}s</div>
         <div>Phase: {state.phaseCharges}</div>
+        <div>Burst: {state.burstCharges}</div>
         <div>Shift in: {Math.ceil(state.shiftTimerMs / 1000)}s</div>
         <div>Slow: {state.slowTimerMs > 0 ? `${Math.ceil(state.slowTimerMs / 1000)}s` : '—'}</div>
       </div>
 
       <div className="game">
+        <aside className="legend">
+          <h2>Forest Finds</h2>
+          <div className="legend-items">
+            {ITEM_LEGEND.map((item) => (
+              <div className="legend-item" key={item.type}>
+                <ItemIcon sprite={item.sprite} />
+                <div>
+                  <div className="legend-name">{item.name}</div>
+                  <div className="legend-desc">{item.description}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="legend-tip">
+            Burst: press Space, Z, or X to clear vines in a 5x5 area.
+          </div>
+        </aside>
+
         <div className="board-frame">
           <canvas ref={canvasRef} className="board" aria-label="Snake board" />
           <div className="board-caption">Watch the vines glow before they move.</div>
-        </div>
-        <div className="controls">
-          <button type="button" onClick={() => handleDirection('up')} aria-label="Move up">
-            Up
-          </button>
-          <div className="controls-row">
-            <button type="button" onClick={() => handleDirection('left')} aria-label="Move left">
-              Left
-            </button>
-            <button type="button" onClick={() => handleDirection('down')} aria-label="Move down">
-              Down
-            </button>
-            <button type="button" onClick={() => handleDirection('right')} aria-label="Move right">
-              Right
-            </button>
-          </div>
-          <button type="button" className="ghost" onClick={() => setSoundOn((prev) => !prev)}>
-            Sound: {soundOn ? 'On' : 'Off'}
+          <button type="button" className="restart" onClick={handleRestart}>
+            Start a New Trail
           </button>
         </div>
-        <button type="button" className="restart" onClick={handleRestart}>
-          Start a New Trail
-        </button>
       </div>
 
       <section className="tips">
@@ -280,7 +343,7 @@ export default function App() {
       </section>
 
       <footer className="help">
-        <span>Controls: Arrow keys or WASD.</span>
+        <span>Controls: Arrow keys or WASD. Burst: Space/Z/X.</span>
       </footer>
     </div>
   );

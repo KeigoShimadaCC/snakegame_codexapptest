@@ -1,6 +1,8 @@
 import type { Direction } from './types';
 
-export type Action = { type: 'TURN'; direction: Direction };
+export type Action =
+  | { type: 'TURN'; direction: Direction }
+  | { type: 'BURST' };
 
 const KEY_TO_ACTION: Record<string, Action> = {
   ArrowUp: { type: 'TURN', direction: 'up' },
@@ -14,7 +16,12 @@ const KEY_TO_ACTION: Record<string, Action> = {
   W: { type: 'TURN', direction: 'up' },
   S: { type: 'TURN', direction: 'down' },
   A: { type: 'TURN', direction: 'left' },
-  D: { type: 'TURN', direction: 'right' }
+  D: { type: 'TURN', direction: 'right' },
+  ' ': { type: 'BURST' },
+  z: { type: 'BURST' },
+  Z: { type: 'BURST' },
+  x: { type: 'BURST' },
+  X: { type: 'BURST' }
 };
 
 export const keyToAction = (key: string): Action | null => KEY_TO_ACTION[key] ?? null;

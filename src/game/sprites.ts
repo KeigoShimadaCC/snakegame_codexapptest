@@ -32,24 +32,24 @@ export const SPRITES = {
     "........"
   ]),
   yellowBanana: makeSprite([
-    "..YY....",
-    ".YYYY...",
+    "........",
+    "..YYYY..",
+    ".YYYYY..",
     "YYYYY...",
-    "YYYYY...",
     ".YYYY...",
-    "..YY....",
-    "...y....",
+    "..YYY...",
+    "...yy...",
     "........"
   ]),
   strawberry: makeSprite([
-    "..pp....",
-    ".pppp...",
+    "...gg...",
+    "..ppp...",
+    ".pPPp...",
     "pPPPPp..",
     "PPPPPPp.",
     "PPPPPPp.",
     ".PPPPp..",
-    "..PPP...",
-    "...g...."
+    "..PPP..."
   ]),
   clover: makeSprite([
     "..g.g...",
@@ -71,12 +71,22 @@ export const SPRITES = {
     "..AAAA..",
     "...AA..."
   ]),
+  glowSeed: makeSprite([
+    "...OO...",
+    "..OOOO..",
+    ".OOOooO.",
+    "OOOooOOO",
+    ".OOOooO.",
+    "..OOOO..",
+    "...OO...",
+    "........"
+  ]),
   snakeHead: makeSprite([
     "..GGGG..",
     ".GGGGGG.",
     "GGWGGWGG",
     "GGGGGGGG",
-    "GGGKGGGG",
+    "GGGKKGGG",
     ".GGGGGG.",
     "..GGGG..",
     "...gg..."
@@ -116,7 +126,9 @@ const PALETTE: Record<string, string> = {
   W: '#f5f7f3',
   K: '#24311f',
   A: '#c98b4b',
-  a: '#9a6b3c'
+  a: '#9a6b3c',
+  O: '#ffe780',
+  o: '#f7c443'
 };
 
 export const drawSprite = (

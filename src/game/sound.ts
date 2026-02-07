@@ -1,4 +1,4 @@
-export type SoundFx = 'eat' | 'bird' | 'banana' | 'phase' | 'gameover' | 'shift' | 'bonus';
+export type SoundFx = 'eat' | 'bird' | 'banana' | 'phase' | 'gameover' | 'shift' | 'bonus' | 'burst';
 
 let audioCtx: AudioContext | null = null;
 let enabled = true;
@@ -49,6 +49,10 @@ export const playSound = (fx: SoundFx) => {
     case 'bonus':
       playTone(760, 0.1, 'triangle');
       playTone(980, 0.1, 'triangle');
+      break;
+    case 'burst':
+      playTone(280, 0.08, 'sawtooth');
+      playTone(180, 0.1, 'sawtooth');
       break;
     case 'phase':
       playTone(520, 0.08, 'sine');

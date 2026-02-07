@@ -8,7 +8,8 @@ export type FoodType =
   | 'YELLOW_BANANA'
   | 'PINK_STRAWBERRY'
   | 'GREEN_CLOVER'
-  | 'GOLD_ACORN';
+  | 'GOLD_ACORN'
+  | 'GLOW_SEED';
 
 export type FoodItem = {
   pos: Point;
@@ -35,6 +36,8 @@ export type GameState = {
   phaseCharges: number;
   phaseWindowMoves: number;
   slowTimerMs: number;
+  burstCharges: number;
   lastEatenType: FoodType | null;
+  lastBurstUsed: boolean;
   isGameOver: boolean;
 };

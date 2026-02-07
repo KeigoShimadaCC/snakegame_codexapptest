@@ -22,7 +22,7 @@ body {
 }
 
 .app {
-  max-width: 980px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 36px 24px 48px;
   display: flex;
@@ -58,6 +58,13 @@ body {
   to {
     transform: translateY(-80px);
   }
+}
+
+.sound-toggle {
+  position: fixed;
+  right: 24px;
+  top: 18px;
+  z-index: 5;
 }
 
 .intro {
@@ -154,9 +161,62 @@ body {
 
 .game {
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-columns: 0.9fr 1.1fr;
   gap: 20px;
   align-items: start;
+}
+
+.legend {
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid #cfdcc4;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.legend h2 {
+  margin: 0;
+  font-size: 16px;
+  color: #2f3b2b;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legend-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.legend-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.legend-desc {
+  font-size: 12px;
+  color: #4b5643;
+}
+
+.legend-tip {
+  font-size: 12px;
+  color: #51604a;
+  padding-top: 4px;
+}
+
+.item-icon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+  border-radius: 6px;
+  background: #eef5e6;
+  border: 1px solid #cfdcc4;
 }
 
 .board-frame {
@@ -178,22 +238,6 @@ body {
   margin-top: 10px;
   font-size: 12px;
   color: #5a6a53;
-}
-
-.controls {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.7);
-  border-radius: 12px;
-  border: 1px solid #cfdcc4;
-}
-
-.controls-row {
-  display: flex;
-  gap: 8px;
 }
 
 button {
@@ -256,8 +300,9 @@ button.ghost {
     grid-template-columns: 1fr;
   }
 
-  .restart {
-    margin-top: 0;
+  .sound-toggle {
+    position: static;
+    align-self: flex-end;
   }
 }
 
