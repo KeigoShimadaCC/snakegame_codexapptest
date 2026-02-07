@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import type { Action } from './input';
-import { applyShift, initWalls, isSafeShift, planShift } from './maze';
-import type { GameState, ShiftDirection } from './state';
+import { addWalls, applyShift, initWalls, isSafeShift, planShift, removeWalls, targetWallCount } from './maze';
+import type { FoodItem, FoodType, GameState } from './state';
 import type { Direction, Point } from './types';
 
 const OPPOSITES: Record<Direction, Direction> = {
@@ -15,25 +15,63 @@ const isSamePoint = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-const randomApple = (gridSize: number, rng: () => number, snake: Point[], walls: boolean[][]): Point => {
+const FOOD_ORDER: FoodType[] = [
+  'RED_APPLE',
+  'BLUE_BIRD',
+  'YELLOW_BANANA',
+  'PINK_STRAWBERRY',
+  'GREEN_CLOVER',
+  'GOLD_ACORN'
+];
+
+const randomFoodType = (rng: () => number): FoodType => {
+  const roll = rng();
+  if (roll < 0.55) {
+    return 'RED_APPLE';
+  }
+  if (roll < 0.72) {
+    return 'YELLOW_BANANA';
+  }
+  if (roll < 0.86) {
+    return 'PINK_STRAWBERRY';
+  }
+  if (roll < 0.94) {
+    return 'GREEN_CLOVER';
+  }
+  if (roll < 0.98) {
+    return 'GOLD_ACORN';
+  }
+  return 'BLUE_BIRD';
+};
+
+const isBlocked = (px: number, py: number, snake: Point[], walls: boolean[][], foods: FoodItem[]) =>
+  walls[px]?.[py] ||
+  snake.some((segment) => segment.x === px && segment.y === py) ||
+  foods.some((food) => food.pos.x === px && food.pos.y === py);
+
+const spawnFood = (
+  gridSize: number,
+  rng: () => number,
+  snake: Point[],
+  walls: boolean[][],
+  foods: FoodItem[],
+  type?: FoodType
+): FoodItem => {
   const totalCells = gridSize * gridSize;
   let x = 0;
   let y = 0;
   let attempts = 0;
 
-  const isBlocked = (px: number, py: number) =>
-    walls[px]?.[py] || snake.some((segment) => segment.x === px && segment.y === py);
-
   do {
     x = Math.floor(rng() * gridSize);
     y = Math.floor(rng() * gridSize);
     attempts += 1;
-  } while (isBlocked(x, y) && attempts < totalCells * 2);
+  } while (isBlocked(x, y, snake, walls, foods) && attempts < totalCells * 2);
 
-  if (isBlocked(x, y)) {
+  if (isBlocked(x, y, snake, walls, foods)) {
     for (let yy = 0; yy < gridSize; yy += 1) {
       for (let xx = 0; xx < gridSize; xx += 1) {
-        if (!isBlocked(xx, yy)) {
+        if (!isBlocked(xx, yy, snake, walls, foods)) {
           x = xx;
           y = yy;
           break;
@@ -42,7 +80,62 @@ const randomApple = (gridSize: number, rng: () => number, snake: Point[], walls:
     }
   }
 
-  return { x, y };
+  const foodType = type ?? randomFoodType(rng);
+  const direction: Direction | undefined = foodType === 'BLUE_BIRD' ? 'right' : undefined;
+
+  return { pos: { x, y }, type: foodType, direction };
+};
+
+const ensureFoodTargets = (
+  gridSize: number,
+  rng: () => number,
+  snake: Point[],
+  walls: boolean[][],
+  foods: FoodItem[]
+): FoodItem[] => {
+  let nextFoods = [...foods];
+  for (const type of FOOD_ORDER) {
+    const target = CONFIG.foodTargets[type] ?? 0;
+    const count = nextFoods.filter((food) => food.type === type).length;
+    for (let i = count; i < target; i += 1) {
+      nextFoods = [...nextFoods, spawnFood(gridSize, rng, snake, walls, nextFoods, type)];
+    }
+  }
+  return nextFoods;
+};
+
+const moveFoods = (
+  foods: FoodItem[],
+  rng: () => number,
+  snake: Point[],
+  walls: boolean[][],
+  gridSize: number
+): FoodItem[] => {
+  return foods.map((food) => {
+    if (food.type !== 'BLUE_BIRD') {
+      return food;
+    }
+    if (rng() > CONFIG.items.birdMoveChance) {
+      return food;
+    }
+
+    const directions: Direction[] = ['up', 'down', 'left', 'right'];
+    const tryDir = directions[Math.floor(rng() * directions.length)];
+    const next = nextHead(food.pos, tryDir);
+    if (
+      next.x < 0 ||
+      next.y < 0 ||
+      next.x >= gridSize ||
+      next.y >= gridSize ||
+      walls[next.x]?.[next.y] ||
+      snake.some((segment) => isSamePoint(segment, next)) ||
+      foods.some((other) => other !== food && isSamePoint(other.pos, next))
+    ) {
+      return food;
+    }
+
+    return { ...food, pos: next, direction: tryDir };
+  });
 };
 
 export const initGame = (gridSize = CONFIG.gridSize, seed = Date.now()): GameState => {
@@ -63,13 +156,13 @@ export const initGame = (gridSize = CONFIG.gridSize, seed = Date.now()): GameSta
   ];
 
   const walls = initWalls(gridSize, rng, snake);
-  const apple = randomApple(gridSize, rng, snake, walls);
+  const foods = ensureFoodTargets(gridSize, rng, snake, walls, []);
 
   return {
     snake,
     direction: 'right',
     pendingDirections: [],
-    apple,
+    foods,
     score: 0,
     tickMs: CONFIG.baseTickMs,
     elapsedMs: 0,
@@ -77,12 +170,14 @@ export const initGame = (gridSize = CONFIG.gridSize, seed = Date.now()): GameSta
     shiftTimerMs: CONFIG.shiftIntervalMs,
     shiftWarningMs: 0,
     pendingShift: null,
-    applesSinceShift: 0,
+    foodsSinceShift: 0,
     flowTimerMs: 0,
     flowMultiplier: 1,
-    applesSincePhase: 0,
+    foodsSincePhase: 0,
     phaseCharges: 0,
     phaseWindowMoves: 0,
+    slowTimerMs: 0,
+    lastEatenType: null,
     isGameOver: false
   };
 };
@@ -150,7 +245,10 @@ const handleWallCollision = (state: GameState): { state: GameState; allow: boole
 
 const updateSpeed = (state: GameState): GameState => {
   const t = clamp(state.elapsedMs / CONFIG.speedRampDurationMs, 0, 1);
-  const tickMs = CONFIG.baseTickMs - (CONFIG.baseTickMs - CONFIG.minTickMs) * t;
+  let tickMs = CONFIG.baseTickMs - (CONFIG.baseTickMs - CONFIG.minTickMs) * t;
+  if (state.slowTimerMs > 0) {
+    tickMs *= CONFIG.items.bananaSlowMultiplier;
+  }
   return { ...state, tickMs };
 };
 
@@ -171,6 +269,16 @@ const updateShiftTimers = (state: GameState): GameState => {
     if (nextState.shiftWarningMs === 0 && nextState.pendingShift) {
       if (isSafeShift(nextState.walls, nextState.snake, nextState.pendingShift)) {
         nextState.walls = applyShift(nextState.walls, nextState.pendingShift);
+        const target = targetWallCount(CONFIG.gridSize, nextState.snake.length);
+        const anchor = nextState.foods[0]?.pos ?? nextState.snake[0];
+        nextState.walls = addWalls(
+          nextState.walls,
+          Math.random,
+          nextState.snake,
+          anchor,
+          target,
+          CONFIG.walls.spawnPerShift
+        );
         nextState.pendingShift = null;
       } else {
         nextState.pendingShift = null;
@@ -179,59 +287,43 @@ const updateShiftTimers = (state: GameState): GameState => {
     }
   } else {
     nextState.shiftTimerMs = Math.max(0, nextState.shiftTimerMs - nextState.tickMs);
-    if (nextState.shiftTimerMs === 0 || nextState.applesSinceShift >= CONFIG.applesPerShift) {
+    if (nextState.shiftTimerMs === 0 || nextState.foodsSinceShift >= CONFIG.foodsPerShift) {
       nextState.pendingShift = planShift(Math.random);
       nextState.shiftWarningMs = CONFIG.shiftWarningMs;
       nextState.shiftTimerMs = CONFIG.shiftIntervalMs;
-      nextState.applesSinceShift = 0;
+      nextState.foodsSinceShift = 0;
     }
   }
   return nextState;
 };
 
-const applyShiftSafety = (state: GameState): GameState => {
-  if (!state.pendingShift && state.shiftWarningMs === 0) {
+const respawnFoodIfBlocked = (state: GameState, gridSize: number, rng: () => number): GameState => {
+  const blocked = state.foods.some((food) => state.walls[food.pos.x]?.[food.pos.y]);
+  if (!blocked) {
     return state;
   }
-  if (state.shiftWarningMs > 0 || !state.pendingShift) {
-    return state;
-  }
-  if (!isSafeShift(state.walls, state.snake, state.pendingShift)) {
-    return {
-      ...state,
-      pendingShift: null,
-      shiftTimerMs: Math.min(state.shiftTimerMs, 2_000)
-    };
-  }
-  return state;
-};
-
-const respawnAppleIfBlocked = (state: GameState, gridSize: number, rng: () => number): GameState => {
-  if (state.walls[state.apple.x]?.[state.apple.y]) {
-    return {
-      ...state,
-      apple: randomApple(gridSize, rng, state.snake, state.walls)
-    };
-  }
-  return state;
-};
-
-const tryShiftReroll = (state: GameState): GameState => {
-  if (!state.pendingShift) {
-    return state;
-  }
-  if (isSafeShift(state.walls, state.snake, state.pendingShift)) {
-    return state;
-  }
-  const reroll = planShift(Math.random);
-  if (isSafeShift(state.walls, state.snake, reroll)) {
-    return { ...state, pendingShift: reroll };
-  }
+  const filtered = state.foods.filter((food) => !state.walls[food.pos.x]?.[food.pos.y]);
   return {
     ...state,
-    pendingShift: null,
-    shiftTimerMs: Math.min(state.shiftTimerMs, 2_000)
+    foods: ensureFoodTargets(gridSize, rng, state.snake, state.walls, filtered)
   };
+};
+
+const scoreForFood = (type: FoodType): number => {
+  switch (type) {
+    case 'BLUE_BIRD':
+      return CONFIG.score.blueBird;
+    case 'YELLOW_BANANA':
+      return CONFIG.score.yellowBanana;
+    case 'PINK_STRAWBERRY':
+      return CONFIG.score.strawberry;
+    case 'GREEN_CLOVER':
+      return CONFIG.score.clover;
+    case 'GOLD_ACORN':
+      return CONFIG.score.acorn;
+    default:
+      return CONFIG.score.redApple;
+  }
 };
 
 export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState => {
@@ -239,11 +331,21 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
     return state;
   }
 
-  let nextState = updateSpeed({ ...state, elapsedMs: state.elapsedMs + state.tickMs });
+  let nextState = updateSpeed({ ...state, elapsedMs: state.elapsedMs + state.tickMs, lastEatenType: null });
   nextState = updateFlow(nextState);
   nextState = updateShiftTimers(nextState);
-  nextState = tryShiftReroll(nextState);
-  nextState = applyShiftSafety(nextState);
+
+  if (nextState.slowTimerMs > 0) {
+    nextState = {
+      ...nextState,
+      slowTimerMs: Math.max(0, nextState.slowTimerMs - nextState.tickMs)
+    };
+  }
+
+  nextState = {
+    ...nextState,
+    foods: moveFoods(nextState.foods, Math.random, nextState.snake, nextState.walls, gridSize)
+  };
 
   const { direction, remaining } = getNextDirection(nextState);
   const head = nextState.snake[0];
@@ -267,7 +369,8 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
     nextState = wallCheck.state;
   }
 
-  const willEat = isSamePoint(newHead, nextState.apple);
+  const eaten = nextState.foods.find((food) => isSamePoint(food.pos, newHead));
+  const willEat = Boolean(eaten);
   const bodyToCheck = willEat ? nextState.snake : nextState.snake.slice(0, -1);
   if (bodyToCheck.some((segment) => isSamePoint(segment, newHead))) {
     return { ...nextState, isGameOver: true };
@@ -290,7 +393,7 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
     };
   }
 
-  if (willEat) {
+  if (willEat && eaten) {
     const nextFlowIndex = nextState.flowTimerMs > 0
       ? Math.min(CONFIG.flowMultipliers.length - 1, CONFIG.flowMultipliers.indexOf(nextState.flowMultiplier) + 1)
       : 0;
@@ -298,25 +401,56 @@ export const step = (state: GameState, gridSize = CONFIG.gridSize): GameState =>
 
     nextState = {
       ...nextState,
-      score: nextState.score + CONFIG.score.apple * multiplier,
-      apple: randomApple(gridSize, Math.random, nextSnake, nextState.walls),
+      score: nextState.score + scoreForFood(eaten.type) * multiplier,
       flowTimerMs: CONFIG.flowWindowMs,
       flowMultiplier: multiplier,
-      applesSinceShift: nextState.applesSinceShift + 1,
-      applesSincePhase: nextState.applesSincePhase + 1
+      foodsSinceShift: nextState.foodsSinceShift + 1,
+      foodsSincePhase: nextState.foodsSincePhase + 1,
+      lastEatenType: eaten.type
     };
 
-    if (nextState.applesSincePhase % CONFIG.applesPerPhaseCharge === 0) {
+    let remainingFoods = nextState.foods.filter((food) => food !== eaten);
+    remainingFoods = ensureFoodTargets(gridSize, Math.random, nextSnake, nextState.walls, remainingFoods);
+
+    nextState = {
+      ...nextState,
+      foods: remainingFoods
+    };
+
+    if (eaten.type === 'YELLOW_BANANA') {
+      nextState = {
+        ...nextState,
+        slowTimerMs: CONFIG.items.bananaSlowMs
+      };
+    }
+
+    if (eaten.type === 'GREEN_CLOVER') {
+      const nextCharges = Math.min(CONFIG.phaseChargesMax, nextState.phaseCharges + 1);
+      nextState = {
+        ...nextState,
+        phaseCharges: nextCharges
+      };
+    }
+
+    if (eaten.type === 'GOLD_ACORN') {
+      nextState = {
+        ...nextState,
+        walls: removeWalls(nextState.walls, Math.random, CONFIG.items.acornClearWalls)
+      };
+    }
+
+    if (nextState.foodsSincePhase % CONFIG.foodsPerPhaseCharge === 0) {
       const nextCharges = Math.min(CONFIG.phaseChargesMax, nextState.phaseCharges + 1);
       nextState = {
         ...nextState,
         phaseCharges: nextCharges,
-        score: nextState.score + CONFIG.score.phaseChargeBonus
+        score: nextState.score + CONFIG.score.phaseChargeBonus,
+        walls: removeWalls(nextState.walls, Math.random, CONFIG.walls.clearOnPhase)
       };
     }
   }
 
-  nextState = respawnAppleIfBlocked(nextState, gridSize, Math.random);
+  nextState = respawnFoodIfBlocked(nextState, gridSize, Math.random);
 
   return nextState;
 };

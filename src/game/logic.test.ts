@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG } from './config';
 import { initGame, step } from './logic';
-import { applyShift, isSafeShift, initWalls } from './maze';
+import { applyShift, isSafeShift } from './maze';
 import type { Point } from './types';
 
 const makeSnake = (points: Point[]) => points;
