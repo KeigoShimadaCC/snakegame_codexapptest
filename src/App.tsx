@@ -30,6 +30,17 @@ type ItemInfo = {
   description: string;
 };
 
+type RunRecord = {
+  score: number;
+  timeSec: number;
+  dateISO: string;
+};
+
+const STORAGE_KEYS = {
+  best: 'willowglade_best_score',
+  recent: 'willowglade_recent_runs'
+};
+
 const ITEM_LEGEND: ItemInfo[] = [
   {
     type: 'RED_APPLE',
@@ -75,6 +86,13 @@ const ITEM_LEGEND: ItemInfo[] = [
   }
 ];
 
+const INTRO_ITEMS = [
+  ITEM_LEGEND[0],
+  ITEM_LEGEND[1],
+  ITEM_LEGEND[3],
+  ITEM_LEGEND[6]
+];
+
 const spriteForFood = (type: FoodType) =>
   ITEM_LEGEND.find((item) => item.type === type)?.sprite ?? SPRITES.redApple;
 
@@ -98,17 +116,53 @@ const ItemIcon = ({ sprite }: { sprite: Sprite }) => {
   return <canvas ref={ref} className="item-icon" aria-hidden="true" />;
 };
 
+const loadBestScore = (): number => {
+  const raw = localStorage.getItem(STORAGE_KEYS.best);
+  return raw ? Number(raw) || 0 : 0;
+};
+
+const loadRecentRuns = (): RunRecord[] => {
+  const raw = localStorage.getItem(STORAGE_KEYS.recent);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as RunRecord[];
+    }
+  } catch {
+    return [];
+  }
+  return [];
+};
+
+const formatTime = (timeSec: number): string => {
+  const minutes = Math.floor(timeSec / 60);
+  const seconds = timeSec % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
 export default function App() {
   const seed = useStableSeed();
   const [state, setState] = useState(() => initGame(CONFIG.gridSize, seed));
   const [screen, setScreen] = useState<Screen>('INTRO');
   const [soundOn, setSoundOn] = useState(true);
+  const [bestScore, setBestScore] = useState(0);
+  const [recentRuns, setRecentRuns] = useState<RunRecord[]>([]);
+  const [scorePulse, setScorePulse] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevGameOver = useRef(false);
   const prevShiftWarning = useRef(0);
   const prevLastEaten = useRef(state.lastEatenType);
   const prevPhaseCharges = useRef(state.phaseCharges);
   const prevBurstUsed = useRef(state.lastBurstUsed);
+  const prevScore = useRef(state.score);
+
+  useEffect(() => {
+    setBestScore(loadBestScore());
+    setRecentRuns(loadRecentRuns());
+  }, []);
 
   useEffect(() => {
     setSoundEnabled(soundOn);
@@ -155,6 +209,18 @@ export default function App() {
     }
     if (!prevGameOver.current && state.isGameOver) {
       playSound('gameover');
+      const timeSec = Math.round(state.elapsedMs / 1000);
+      const record: RunRecord = {
+        score: Math.round(state.score),
+        timeSec,
+        dateISO: new Date().toISOString()
+      };
+      const nextRuns = [record, ...recentRuns].slice(0, 5);
+      const nextBest = Math.max(bestScore, record.score);
+      setRecentRuns(nextRuns);
+      setBestScore(nextBest);
+      localStorage.setItem(STORAGE_KEYS.recent, JSON.stringify(nextRuns));
+      localStorage.setItem(STORAGE_KEYS.best, String(nextBest));
     }
     prevGameOver.current = state.isGameOver;
 
@@ -185,7 +251,17 @@ export default function App() {
       playSound('burst');
     }
     prevBurstUsed.current = state.lastBurstUsed;
-  }, [screen, state]);
+  }, [screen, state, bestScore, recentRuns]);
+
+  useEffect(() => {
+    if (state.score !== prevScore.current) {
+      setScorePulse(true);
+      const id = window.setTimeout(() => setScorePulse(false), 220);
+      prevScore.current = state.score;
+      return () => window.clearTimeout(id);
+    }
+    return undefined;
+  }, [state.score]);
 
   useEffect(() => {
     if (screen !== 'PLAYING') {
@@ -246,22 +322,30 @@ export default function App() {
         <div className="storybook">
           <div className="storybook-card">
             <p className="eyebrow">Willowglade Woods</p>
-            <h1>Sprout the Serpent</h1>
-            <p className="subtitle">
-              A gentle forest is always in motion. Guide Sprout through the shifting vines, gather
-              apples and travelers, and keep the trail alive.
+            <h1>Willowglade Dash</h1>
+            <p className="subtitle">Follow the shifting forest paths.</p>
+            <p className="intro-copy">
+              Sprout is a tiny guardian racing the living woods. Vines slide, trails glow, and every
+              snack changes the path ahead. Can you keep the forest in rhythm?
             </p>
+            <div className="intro-items">
+              {INTRO_ITEMS.map((item) => (
+                <div key={item.type} className="intro-item">
+                  <ItemIcon sprite={item.sprite} />
+                  <span>{item.name}</span>
+                </div>
+              ))}
+            </div>
             <div className="storybook-cta">
               <button type="button" onClick={() => setScreen('PLAYING')}>
-                Begin the Trail
+                Begin the Dash
               </button>
               <button type="button" className="ghost" onClick={() => setSoundOn((prev) => !prev)}>
                 Sound: {soundOn ? 'On' : 'Off'}
               </button>
             </div>
             <div className="storybook-notes">
-              <p>Red apples are steady. Blue birds dart away. Yellow bananas slow you down.</p>
-              <p>Strawberries score big, clovers boost Phase, acorns clear vines, glow seeds add Burst.</p>
+              <p>Chain apples to build Flow. Press Space/Z/X to Burst when glow seeds appear.</p>
             </div>
           </div>
         </div>
@@ -278,31 +362,11 @@ export default function App() {
       <header className="header">
         <div>
           <p className="eyebrow">Willowglade Woods</p>
-          <h1>Sprout the Serpent</h1>
-          <p className="subtitle">
-            Guide Sprout through the shifting forest paths. Gather apples, earn Flow, and slip through
-            vines with Phase.
-          </p>
+          <h1>Willowglade Dash</h1>
+          <p className="subtitle">Follow the shifting forest paths.</p>
         </div>
         <div className="status">{state.isGameOver ? 'Game Over' : 'Trail Running'}</div>
       </header>
-
-      <div className="story">
-        <p>
-          The forest rearranges itself every few moments. Keep Sprout moving, follow the glow of
-          apples, and trust your instincts when the vines shift.
-        </p>
-      </div>
-
-      <div className="hud">
-        <div>Score: {state.score.toFixed(0)}</div>
-        <div>Flow: x{state.flowMultiplier.toFixed(1)}</div>
-        <div>Flow Window: {(state.flowTimerMs / 1000).toFixed(1)}s</div>
-        <div>Phase: {state.phaseCharges}</div>
-        <div>Burst: {state.burstCharges}</div>
-        <div>Shift in: {Math.ceil(state.shiftTimerMs / 1000)}s</div>
-        <div>Slow: {state.slowTimerMs > 0 ? `${Math.ceil(state.slowTimerMs / 1000)}s` : '—'}</div>
-      </div>
 
       <div className="game">
         <aside className="legend">
@@ -318,29 +382,62 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div className="legend-tip">
-            Burst: press Space, Z, or X to clear vines in a 5x5 area.
-          </div>
+          <div className="legend-tip">Burst: press Space, Z, or X to clear vines in a 5x5 area.</div>
         </aside>
 
         <div className="board-frame">
+          <div className="score-hero">
+            <div className={scorePulse ? 'score-value pulse' : 'score-value'}>
+              {state.score.toFixed(0)}
+              <span className="score-label">Score</span>
+            </div>
+            <div className="shift-timer">
+              <span className="shift-label">Next Shift</span>
+              <span className="shift-value">{Math.ceil(state.shiftTimerMs / 1000)}s</span>
+              {state.shiftWarningMs > 0 ? <span className="shift-glow">Glow</span> : null}
+            </div>
+          </div>
+
+          <div className="stat-chips">
+            <div className="stat-chip">Flow x{state.flowMultiplier.toFixed(1)}</div>
+            <div className="stat-chip">Phase {state.phaseCharges}</div>
+            <div className="stat-chip">Burst {state.burstCharges}</div>
+            {state.slowTimerMs > 0 ? (
+              <div className="stat-chip">Slow {Math.ceil(state.slowTimerMs / 1000)}s</div>
+            ) : null}
+          </div>
+
           <canvas ref={canvasRef} className="board" aria-label="Snake board" />
           <div className="board-caption">Watch the vines glow before they move.</div>
+
+          <div className="scoreboard">
+            <div className="scoreboard-header">
+              <div>
+                <div className="scoreboard-title">Scoreboard</div>
+                <div className="scoreboard-sub">Best Score</div>
+              </div>
+              <div className="scoreboard-best">{bestScore}</div>
+            </div>
+            <div className="scoreboard-list">
+              {recentRuns.length === 0 ? (
+                <div className="scoreboard-empty">No runs yet. Start a new dash!</div>
+              ) : (
+                recentRuns.map((run, index) => (
+                  <div className="scoreboard-row" key={`${run.dateISO}-${index}`}>
+                    <span>#{index + 1}</span>
+                    <span>{run.score}</span>
+                    <span>{formatTime(run.timeSec)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           <button type="button" className="restart" onClick={handleRestart}>
-            Start a New Trail
+            Start a New Dash
           </button>
         </div>
       </div>
-
-      <section className="tips">
-        <h2>Forest Notes</h2>
-        <ul>
-          <li>Chain apples quickly to raise your Flow bonus.</li>
-          <li>Every third snack grants a Phase charge. Use it to pass through one wall.</li>
-          <li>Blue birds are skittish. Yellow bananas slow the trail.</li>
-          <li>Strawberries score big, clovers boost Phase, and acorns clear vines.</li>
-        </ul>
-      </section>
 
       <footer className="help">
         <span>Controls: Arrow keys or WASD. Burst: Space/Z/X.</span>
